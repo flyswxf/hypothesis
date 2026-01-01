@@ -19,6 +19,13 @@ from typing import (
     TypeAlias,
     cast,
 )
+'''
+在 Hypothesis 中，测试数据的生成是由一系列离散的随机选择（Choice）决定的。
+choice_equal 、 choice_from_index 、 choice_key 、 choice_permitted 、 choice_to_index是一组辅助函数。它们用于操作和比较这些选择。
+例如， choice_to_index 可以将一个复杂的选择值映射为一个整数索引，从而定义什么叫“更简单”的选择
+（通常索引越小越简单）如 0, 1, 空列表）
+这是 Shrinking 算法优化的核心依据。
+'''
 
 from hypothesis.internal.conjecture.choice import (
     ChoiceNode,
@@ -28,6 +35,7 @@ from hypothesis.internal.conjecture.choice import (
     choice_key,
     choice_permitted,
     choice_to_index,
+    
 )
 from hypothesis.internal.conjecture.data import (
     ConjectureData,
@@ -63,6 +71,13 @@ if TYPE_CHECKING:
     from hypothesis.internal.conjecture.engine import ConjectureRunner
 
 ShrinkPredicateT: TypeAlias = Callable[[ConjectureResult | _Overrun], bool]
+'''
+ConjectureData 是 Hypothesis 中承载测试数据生成的上下文对象，它记录了生成过程中的所有字节流和选择。
+ConjectureResult 表示一次测试执行的结果，例如通过、失败或被过滤（Discard）。
+类型别名 ShrinkPredicateT 是一个可调用对象（函数），接受 ConjectureResult 或 _Overrun 作为参数
+并返回一个布尔值。
+这个函数签名的含义通常是：“给定一个简化后的测试结果，判断这个结果是否仍然是我们关注的（例如是否仍然复现了 Bug）”
+'''
 
 
 def sort_key(nodes: Sequence[ChoiceNode]) -> tuple[int, tuple[int, ...]]:
@@ -87,6 +102,10 @@ def sort_key(nodes: Sequence[ChoiceNode]) -> tuple[int, tuple[int, ...]]:
         len(nodes),
         tuple(choice_to_index(node.value, node.constraints) for node in nodes),
     )
+    '''
+    因为是元组比较， sort_key 会从左到右逐个比较这些索引。
+    这意味着序列开头的选择如果有简化的空间（变成更小的索引），比序列末尾的简化更重要。
+    '''
 
 
 @dataclass(slots=True, frozen=False)
@@ -96,10 +115,15 @@ class ShrinkPass:
     last_prefix: Any = ()
 
     # some execution statistics
-    calls: int = 0
+    calls: int = 0 # 该策略被调用的总次数。
     misaligned: int = 0
-    shrinks: int = 0
-    deletions: int = 0
+    '''
+    记录“未对齐”的次数。
+    在基于字节流的简化中，有时候删除某些字节会导致后续数据的读取错位（Misalignment），导致生成出完全不相关的数据。
+    这个计数器帮助衡量该策略是否频繁导致这种无效操作。
+    '''
+    shrinks: int = 0 # 成功简化的次数。即该策略成功让测试用例变小了多少次。
+    deletions: int = 0 # 具体删除了多少个元素或字节。
 
     def __post_init__(self):
         if self.name is None:
@@ -308,19 +332,19 @@ class Shrinker:
         self.calls_at_last_shrink = self.initial_calls
 
         self.shrink_passes: list[ShrinkPass] = [
-            ShrinkPass(self.try_trivial_spans),
-            self.node_program("X" * 5),
-            self.node_program("X" * 4),
-            self.node_program("X" * 3),
-            self.node_program("X" * 2),
-            self.node_program("X" * 1),
+            # ShrinkPass(self.try_trivial_spans),
+            # self.node_program("X" * 5),
+            # self.node_program("X" * 4),
+            # self.node_program("X" * 3),
+            # self.node_program("X" * 2),
+            # self.node_program("X" * 1),
             ShrinkPass(self.pass_to_descendant),
-            ShrinkPass(self.reorder_spans),
-            ShrinkPass(self.minimize_duplicated_choices),
-            ShrinkPass(self.minimize_individual_choices),
-            ShrinkPass(self.redistribute_numeric_pairs),
-            ShrinkPass(self.lower_integers_together),
-            ShrinkPass(self.lower_duplicated_characters),
+            # ShrinkPass(self.reorder_spans),
+            # ShrinkPass(self.minimize_duplicated_choices),
+            # ShrinkPass(self.minimize_individual_choices),
+            # ShrinkPass(self.redistribute_numeric_pairs),
+            # ShrinkPass(self.lower_integers_together),
+            # ShrinkPass(self.lower_duplicated_characters),
         ]
 
         # Because the shrinker is also used to `pareto_optimise` in the target phase,
@@ -410,7 +434,7 @@ class Shrinker:
         """
 
         try:
-            self.initial_coarse_reduction()
+            # self.initial_coarse_reduction()
             self.greedy_shrink()
         except StopShrinking:
             # If we stopped shrinking because we're making slow progress (instead of
